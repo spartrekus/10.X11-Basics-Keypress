@@ -1,0 +1,619 @@
+/*
+ * simple-text.c - demonstrate drawing of text strings on a window. All
+ *		   drawings are done in black color over a white background.
+ */
+
+#include <X11/Xlib.h>
+
+#include <stdio.h>
+#include <stdlib.h>		/* getenv(), etc. */
+#include <unistd.h>		/* sleep(), etc.  */
+#include <string.h>		/* strlen */
+/*
+ * function: create_simple_window. Creates a window with a white background
+ *           in the given size.
+ * input:    display, size of the window (in pixels), and location of the window
+ *           (in pixels).
+ * output:   the window's ID.
+ * notes:    window is created with a black border, 2 pixels wide.
+ *           the window is automatically mapped after its creation.
+ */
+Window
+create_simple_window(Display* display, int width, int height, int x, int y)
+{
+  int screen_num = DefaultScreen(display);
+  int win_border_width = 2;
+  Window win;
+
+  /* create a simple window, as a direct child of the screen's */
+  /* root window. Use the screen's black and white colors as   */
+  /* the foreground and background colors of the window,       */
+  /* respectively. Place the new window's top-left corner at   */
+  /* the given 'x,y' coordinates.                              */
+  win = XCreateSimpleWindow(display, RootWindow(display, screen_num),
+                            x, y, width, height, win_border_width,
+                            BlackPixel(display, screen_num),
+                            WhitePixel(display, screen_num));
+
+  /* make the window actually appear on the screen. */
+  XMapWindow(display, win);
+
+  /* flush all pending requests to the X server. */
+  XFlush(display);
+
+  return win;
+}
+
+GC
+create_gc(Display* display, Window win, int reverse_video)
+{
+  GC gc;				/* handle of newly created GC.  */
+  unsigned long valuemask = 0;		/* which values in 'values' to  */
+					/* check when creating the GC.  */
+  XGCValues values;			/* initial values for the GC.   */
+  unsigned int line_width = 2;		/* line width for the GC.       */
+  int line_style = LineSolid;		/* style for lines drawing and  */
+  int cap_style = CapButt;		/* style of the line's edje and */
+  int join_style = JoinBevel;		/*  joined lines.		*/
+  int screen_num = DefaultScreen(display);
+
+  gc = XCreateGC(display, win, valuemask, &values);
+  if (gc < 0) {
+	fprintf(stderr, "XCreateGC: \n");
+  }
+
+  /* allocate foreground and background colors for this GC. */
+  if (reverse_video) {
+    XSetForeground(display, gc, WhitePixel(display, screen_num));
+    XSetBackground(display, gc, BlackPixel(display, screen_num));
+  }
+  else {
+    XSetForeground(display, gc, BlackPixel(display, screen_num));
+    XSetBackground(display, gc, WhitePixel(display, screen_num));
+  }
+
+  /* define the style of lines that will be drawn using this GC. */
+  XSetLineAttributes(display, gc,
+                     line_width, line_style, cap_style, join_style);
+
+  /* define the fill style for the GC. to be 'solid filling'. */
+  XSetFillStyle(display, gc, FillSolid);
+
+  return gc;
+}
+
+int main(int argc, char* argv[])
+{
+  Display* display;		/* pointer to X Display structure.           */
+  int screen_num;		/* number of screen to place the window on.  */
+  Window win;			/* pointer to the newly created window.      */
+  unsigned int display_width,
+               display_height;	/* height and width of the X display.        */
+  unsigned int win_width,
+	       win_height;	/* height and width for the new window.      */
+  char *display_name = getenv("DISPLAY");  /* address of the X display.      */
+  GC gc;			/* GC (graphics context) used for drawing    */
+				/*  in our window.			     */
+  XFontStruct* font_info;       /* Font structure, used for drawing text.    */
+  char* font_name = "*-*-*-12-*"; /* font to use for drawing text.   */
+
+  /* open connection with the X server. */
+  display = XOpenDisplay(display_name);
+  if (display == NULL) {
+    fprintf(stderr, "%s: cannot connect to X server '%s'\n",
+            argv[0], display_name);
+    exit(1);
+  }
+
+  /* get the geometry of the default screen for our display. */
+  screen_num = DefaultScreen(display);
+  display_width = DisplayWidth(display, screen_num);
+  display_height = DisplayHeight(display, screen_num);
+
+  /* make the new window occupy 1/9 of the screen's size. */
+  win_width = (display_width / 3);
+  win_height = (display_height / 3);
+  printf("window width - '%d'; height - '%d'\n", win_width, win_height);
+
+  /* create a simple window, as a direct child of the screen's   */
+  /* root window. Use the screen's white color as the background */
+  /* color of the window. Place the new window's top-left corner */
+  /* at the given 'x,y' coordinates.                             */
+  win = create_simple_window(display, win_width, win_height, 0, 0);
+
+  /* allocate a new GC (graphics context) for drawing in the window. */
+  gc = create_gc(display, win, 0);
+  XSync(display, False);
+
+  /* try to load the given font. */
+  font_info = XLoadQueryFont(display, font_name);
+  if (!font_info) {
+      fprintf(stderr, "XLoadQueryFont: failed loading font '%s'\n", font_name);
+      exit(-1);
+  }
+
+  /* assign the given font to our GC. */
+  XSetFont(display, gc, font_info->fid);
+
+  {
+    /* variables used for drawing the text strings. */
+    int x, y;
+    char* text_string;
+    int string_width;
+    int font_height;
+
+    /* find the height of the characters drawn using this font.        */
+    font_height = font_info->ascent + font_info->descent;
+
+    /* draw a "hello world" string on the top-left side of our window. */
+    text_string = "hello world";
+    x = 0;
+    y = font_height;
+    XDrawString(display, win, gc, x, y, text_string, strlen(text_string));
+
+    /* draw a "middle of the road" string in the middle of our window. */
+    text_string = "middle of the road";
+    /* find the width, in pixels, of the text that will be drawn using */
+    /* the given font.                                                 */
+    string_width = XTextWidth(font_info, text_string, strlen(text_string));
+    x = (win_width - string_width) / 2;
+    y = (win_height + font_height) / 2;
+    XDrawString(display, win, gc, x, y, text_string, strlen(text_string));
+  }
+
+  /* flush all pending requests to the X server. */
+  XFlush(display);
+
+  /* make a delay for a short period. */
+  sleep(4);
+
+  /* close the connection to the X server. */
+  XCloseDisplay(display);
+  return(0);
+}
+/*
+ * color-drawing.c - demonstrate drawing of pixels, lines, arcs, etc, using
+ *		      different foreground colors, in a window.
+ */
+
+#include <X11/Xlib.h>
+
+#include <stdio.h>
+#include <stdlib.h>		/* getenv(), etc. */
+#include <unistd.h>		/* sleep(), etc.  */
+
+/*
+ * function: create_simple_window. Creates a window with a white background
+ *           in the given size.
+ * input:    display, size of the window (in pixels), and location of the window
+ *           (in pixels).
+ * output:   the window's ID.
+ * notes:    window is created with a black border, 2 pixels wide.
+ *           the window is automatically mapped after its creation.
+ */
+Window
+create_simple_window(Display* display, int width, int height, int x, int y)
+{
+  int screen_num = DefaultScreen(display);
+  int win_border_width = 2;
+  Window win;
+
+  /* create a simple window, as a direct child of the screen's */
+  /* root window. Use the screen's black and white colors as   */
+  /* the foreground and background colors of the window,       */
+  /* respectively. Place the new window's top-left corner at   */
+  /* the given 'x,y' coordinates.                              */
+  win = XCreateSimpleWindow(display, RootWindow(display, screen_num),
+                            x, y, width, height, win_border_width,
+                            BlackPixel(display, screen_num),
+                            WhitePixel(display, screen_num));
+
+  /* make the window actually appear on the screen. */
+  XMapWindow(display, win);
+
+  /* flush all pending requests to the X server. */
+  XFlush(display);
+
+  return win;
+}
+
+GC
+create_gc(Display* display, Window win, int reverse_video)
+{
+  GC gc;				/* handle of newly created GC.  */
+  unsigned long valuemask = 0;		/* which values in 'values' to  */
+					/* check when creating the GC.  */
+  XGCValues values;			/* initial values for the GC.   */
+  unsigned int line_width = 2;		/* line width for the GC.       */
+  int line_style = LineSolid;		/* style for lines drawing and  */
+  int cap_style = CapButt;		/* style of the line's edje and */
+  int join_style = JoinBevel;		/*  joined lines.		*/
+  int screen_num = DefaultScreen(display);
+
+  gc = XCreateGC(display, win, valuemask, &values);
+  if (gc < 0) {
+	fprintf(stderr, "XCreateGC: \n");
+  }
+
+  /* allocate foreground and background colors for this GC. */
+  if (reverse_video) {
+    XSetForeground(display, gc, WhitePixel(display, screen_num));
+    XSetBackground(display, gc, BlackPixel(display, screen_num));
+  }
+  else {
+    XSetForeground(display, gc, BlackPixel(display, screen_num));
+    XSetBackground(display, gc, WhitePixel(display, screen_num));
+  }
+
+  /* define the style of lines that will be drawn using this GC. */
+  XSetLineAttributes(display, gc,
+                     line_width, line_style, cap_style, join_style);
+
+  /* define the fill style for the GC. to be 'solid filling'. */
+  XSetFillStyle(display, gc, FillSolid);
+
+  return gc;
+}
+
+int main(int argc, char* argv[])
+{
+  Display* display;		/* pointer to X Display structure.           */
+  int screen_num;		/* number of screen to place the window on.  */
+  Window win;			/* pointer to the newly created window.      */
+  unsigned int display_width,
+               display_height;	/* height and width of the X display.        */
+  unsigned int width, height;	/* height and width for the new window.      */
+  char *display_name = getenv("DISPLAY");  /* address of the X display.      */
+  GC gc;			/* GC (graphics context) used for drawing    */
+				/*  in our window.			     */
+  Colormap screen_colormap;     /* color map to use for allocating colors.   */
+  XColor red, brown, blue, yellow, green;
+				/* used for allocation of the given color    */
+				/* map entries.                              */
+  Status rc;			/* return status of various Xlib functions.  */
+
+  /* open connection with the X server. */
+  display = XOpenDisplay(display_name);
+  if (display == NULL) {
+    fprintf(stderr, "%s: cannot connect to X server '%s'\n",
+            argv[0], display_name);
+    exit(1);
+  }
+
+  /* get the geometry of the default screen for our display. */
+  screen_num = DefaultScreen(display);
+  display_width = DisplayWidth(display, screen_num);
+  display_height = DisplayHeight(display, screen_num);
+
+  /* make the new window occupy 1/9 of the screen's size. */
+  width = (display_width / 3);
+  height = (display_height / 3);
+  printf("window width - '%d'; height - '%d'\n", width, height);
+
+  /* create a simple window, as a direct child of the screen's   */
+  /* root window. Use the screen's white color as the background */
+  /* color of the window. Place the new window's top-left corner */
+  /* at the given 'x,y' coordinates.                             */
+  win = create_simple_window(display, width, height, 0, 0);
+
+  /* allocate a new GC (graphics context) for drawing in the window. */
+  gc = create_gc(display, win, 0);
+  XSync(display, False);
+
+  /* get access to the screen's color map. */
+  screen_colormap = DefaultColormap(display, DefaultScreen(display));
+
+  /* allocate the set of colors we will want to use for the drawing. */
+  rc = XAllocNamedColor(display, screen_colormap, "red", &red, &red);
+  if (rc == 0) {
+    fprintf(stderr, "XAllocNamedColor - failed to allocated 'red' color.\n");
+    exit(1);
+  }
+  rc = XAllocNamedColor(display, screen_colormap, "brown", &brown, &brown);
+  if (rc == 0) {
+    fprintf(stderr, "XAllocNamedColor - failed to allocated 'brown' color.\n");
+    exit(1);
+  }
+  rc = XAllocNamedColor(display, screen_colormap, "blue", &blue, &blue);
+  if (rc == 0) {
+    fprintf(stderr, "XAllocNamedColor - failed to allocated 'blue' color.\n");
+    exit(1);
+  }
+  rc = XAllocNamedColor(display, screen_colormap, "yellow", &yellow, &yellow);
+  if (rc == 0) {
+    fprintf(stderr, "XAllocNamedColor - failed to allocated 'yellow' color.\n");
+    exit(1);
+  }
+  rc = XAllocNamedColor(display, screen_colormap, "green", &green, &green);
+  if (rc == 0) {
+    fprintf(stderr, "XAllocNamedColor - failed to allocated 'green' color.\n");
+    exit(1);
+  }
+  
+  /* draw one pixel near each corner of the window */
+  /* draw the pixels in a red color. */
+  XSetForeground(display, gc, red.pixel);
+  XDrawPoint(display, win, gc, 5, 5);
+  XDrawPoint(display, win, gc, 5, height-5);
+  XDrawPoint(display, win, gc, width-5, 5);
+  XDrawPoint(display, win, gc, width-5, height-5);
+
+  /* draw two intersecting lines, one horizontal and one vertical, */
+  /* which intersect at point "50,100".                            */
+  /* draw the line in a brown color. */
+  XSetForeground(display, gc, brown.pixel);
+  XDrawLine(display, win, gc, 50, 0, 50, 200);
+  XDrawLine(display, win, gc, 0, 100, 200, 100);
+
+  /* now use the XDrawArc() function to draw a circle whose diameter */
+  /* is 30 pixels, and whose center is at location '50,100'.         */
+  /* draw the arc in a blue color. */
+  XSetForeground(display, gc, blue.pixel);
+  XDrawArc(display, win, gc, 50-(30/2), 100-(30/2), 30, 30, 0, 360*64);
+
+  {
+    XPoint points[] = {
+      {0, 0},
+      {15, 15},
+      {0, 15},
+      {0, 0}
+    };
+    int npoints = sizeof(points)/sizeof(XPoint);
+
+    /* draw a small triangle at the top-left corner of the window. */
+    /* the triangle is made of a set of consecutive lines, whose   */
+    /* end-point pixels are specified in the 'points' array.       */
+    /* draw the triangle in a yellow color. */
+    XSetForeground(display, gc, yellow.pixel);
+    XDrawLines(display, win, gc, points, npoints, CoordModeOrigin);
+  }
+
+  /* draw a rectangle whose top-left corner is at '120,150', its width is */
+  /* 50 pixels, and height is 60 pixels.                                  */
+  /* draw the rectangle in a black color. */
+  XSetForeground(display, gc, BlackPixel(display, screen_num));
+  XDrawRectangle(display, win, gc, 120, 150, 50, 60);
+
+  /* draw a filled rectangle of the same size as above, to the left of the */
+  /* previous rectangle.                                                   */
+  /* draw the rectangle in a green color. */
+  XSetForeground(display, gc, green.pixel);
+  XFillRectangle(display, win, gc, 60, 150, 50, 60);
+
+  /* flush all pending requests to the X server. */
+  XFlush(display);
+
+  /* make a delay for a short period. */
+  sleep(4);
+
+  /* close the connection to the X server. */
+  XCloseDisplay(display);
+  return(0);
+}
+/*
+ * simple-window.c - demonstrate creation of a simple window.
+ */
+
+#include <X11/Xlib.h>
+
+#include <stdio.h>
+#include <stdlib.h>		/* getenv(), etc. */
+#include <unistd.h>		/* sleep(), etc.  */
+
+int main(int argc, char* argv[])
+{
+  Display* display;		/* pointer to X Display structure.           */
+  int screen_num;		/* number of screen to place the window on.  */
+  Window win;			/* pointer to the newly created window.      */
+  unsigned int display_width,
+               display_height;	/* height and width of the X display.        */
+  unsigned int width, height;	/* height and width for the new window.      */
+  unsigned int win_x, win_y;	/* location of the window's top-left corner. */
+  unsigned int win_border_width; /* width of window's border.                */
+  char *display_name = getenv("DISPLAY");  /* address of the X display.      */
+
+  display = XOpenDisplay(display_name);
+  if (display == NULL) {
+    fprintf(stderr, "%s: cannot connect to X server '%s'\n",
+            argv[0], display_name);
+    exit(1);
+  }
+
+  /* get the geometry of the default screen for our display. */
+  screen_num = DefaultScreen(display);
+  display_width = DisplayWidth(display, screen_num);
+  display_height = DisplayHeight(display, screen_num);
+
+  /* make the new window occupy 1/9 of the screen's size. */
+  width = (display_width / 3);
+  height = (display_height / 3);
+
+  /* the window should be placed at the top-left corner of the screen. */
+  win_x = 0;
+  win_y = 0;
+
+  /* the window's border shall be 2 pixels wide. */
+  win_border_width = 2;
+
+  /* create a simple window, as a direct child of the screen's   */
+  /* root window. Use the screen's white color as the background */
+  /* color of the window. Place the new window's top-left corner */
+  /* at the given 'x,y' coordinates.                             */
+  win = XCreateSimpleWindow(display, RootWindow(display, screen_num),
+                            win_x, win_y, width, height, win_border_width,
+                            BlackPixel(display, screen_num),
+                            WhitePixel(display, screen_num));
+
+  /* make the window actually appear on the screen. */
+  XMapWindow(display, win);
+
+  /* flush all pending requests to the X server, and wait until */
+  /* they are processed by the X server.                        */
+  XSync(display, False);
+
+  /* make a delay for a short period. */
+  sleep(4);
+
+  /* close the connection to the X server. */
+  XCloseDisplay(display);
+  return(0);
+}
+
+
+
+
+int main( int argc, char *argv[])
+{
+	if ( argc == 2)
+		if ( strcmp( argv[1] , "" ) !=  0 ) 
+		{
+
+			Display *d;
+			Window w;
+			XEvent e;
+			char cmdi[ PATH_MAX ]; 
+			int s;
+
+			strncpy( cmdi , "" , PATH_MAX);
+			strncat( cmdi , strtimenow() , PATH_MAX - strlen( cmdi ) - 1);
+			strncat( cmdi , " " , PATH_MAX - strlen( cmdi ) - 1);
+			strncat( cmdi , argv[ 1 ], PATH_MAX - strlen( cmdi ) - 1);
+			strncat( cmdi , " " , PATH_MAX - strlen( cmdi ) - 1);
+
+			int WINWIDTH = strlen( cmdi ) * 9;
+
+			d = XOpenDisplay(NULL);
+			if (d == NULL) {
+				fprintf(stderr, "Cannot open display\n");
+				exit(1);
+			}
+
+			s = DefaultScreen(d);
+			w = XCreateSimpleWindow(d, RootWindow(d, s), 0, 0, WINWIDTH , 20, 1, BlackPixel(d, s), WhitePixel(d, s));
+
+
+			XSelectInput(d, w, ExposureMask | KeyPressMask);
+			XMapWindow(d, w);
+
+			XMoveResizeWindow(d, w , 2 , 2 ,  WINWIDTH  , 20 );
+			XRaiseWindow(d , w );
+
+
+			{
+				XNextEvent(d, &e);
+				if (e.type == Expose) 
+				{
+					{
+						XClearWindow(d, w);
+						XDrawString(d, w, DefaultGC(d, s), 5, 10, cmdi , strlen( cmdi ));
+						XFlush( d );
+						usleep( 10000e2 );
+					}
+				}
+
+			}
+			XCloseDisplay(d);
+			return 0;
+		}
+
+
+	return 0;
+
+}
+
+
+
+
+
+
+
+
+/* include the X library headers */
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+#include <X11/Xos.h>
+
+/* include some silly stuff */
+#include <stdio.h>
+#include <stdlib.h>
+
+/* here are our X variables */
+Display *dis;
+int screen;
+Window win;
+GC gc;
+
+/* here are our X routines declared! */
+void init_x();
+void close_x();
+void redraw();
+
+int main () {
+	XEvent event;		/* the XEvent declaration !!! */
+	KeySym key;		/* a dealie-bob to handle KeyPress Events */	
+	char text[255];		/* a char buffer for KeyPress Events */
+
+	init_x();
+
+	/* look for events forever... */
+	while(1) {		
+		/* get the next event and stuff it into our event variable.
+		   Note:  only events we set the mask for are detected!
+		*/
+		XNextEvent(dis, &event);
+	
+		if (event.type==Expose && event.xexpose.count==0) {
+		/* the window was exposed redraw it! */
+			redraw();
+		}
+		if (event.type==KeyPress&&
+		    XLookupString(&event.xkey,text,255,&key,0)==1) {
+		/* use the XLookupString routine to convert the invent
+		   KeyPress data into regular text.  Weird but necessary...
+		*/
+			if (text[0]=='q') {
+				close_x();
+			}
+			printf("You pressed the %c key!\n",text[0]);
+		}
+		if (event.type==ButtonPress) {
+		/* tell where the mouse Button was Pressed */
+			int x=event.xbutton.x,
+			    y=event.xbutton.y;
+
+			strcpy(text,"X is FUN!");
+			XSetForeground(dis,gc,rand()%event.xbutton.x%255);
+			XDrawString(dis,win,gc,x,y, text, strlen(text));
+		}
+	}
+}
+
+void init_x() {
+/* get the colors black and white (see section for details) */        
+	unsigned long black,white;
+
+	dis=XOpenDisplay((char *)0);
+   	screen=DefaultScreen(dis);
+	black=BlackPixel(dis,screen),
+	white=WhitePixel(dis, screen);
+   	win=XCreateSimpleWindow(dis,DefaultRootWindow(dis),0,0,	
+		300, 300, 5,black, white);
+	XSetStandardProperties(dis,win,"Howdy","Hi",None,NULL,0,NULL);
+	XSelectInput(dis, win, ExposureMask|ButtonPressMask|KeyPressMask);
+        gc=XCreateGC(dis, win, 0,0);        
+	XSetBackground(dis,gc,white);
+	XSetForeground(dis,gc,black);
+	XClearWindow(dis, win);
+	XMapRaised(dis, win);
+};
+
+void close_x() {
+	XFreeGC(dis, gc);
+	XDestroyWindow(dis,win);
+	XCloseDisplay(dis);	
+	exit(1);				
+};
+
+void redraw() {
+	XClearWindow(dis, win);
+};
